@@ -40,6 +40,7 @@ class restore_choice_activity_structure_step extends restore_activity_structure_
         $paths[] = new restore_path_element('choice_option', '/activity/choice/options/option');
         if ($userinfo) {
             $paths[] = new restore_path_element('choice_answer', '/activity/choice/answers/answer');
+            $paths[] = new restore_path_element('choice_grade', '/activity/choice/grades/grade');
         }
 
         // Return the paths wrapped into standard activity structure
@@ -86,6 +87,20 @@ class restore_choice_activity_structure_step extends restore_activity_structure_
         $data->userid = $this->get_mappingid('user', $data->userid);
 
         $newitemid = $DB->insert_record('choice_answers', $data);
+        // No need to save this mapping as far as nothing depend on it
+        // (child paths, file areas nor links decoder)
+    }
+
+    protected function process_choice_grade($data) {
+        global $DB;
+
+        $data = (object)$data;
+
+        $data->choiceid = $this->get_new_parentid('choice');
+        $data->optionid = $this->get_mappingid('choice_option', $data->optionid);
+        $data->userid = $this->get_mappingid('user', $data->userid);
+
+        $newitemid = $DB->insert_record('choice_grades', $data);
         // No need to save this mapping as far as nothing depend on it
         // (child paths, file areas nor links decoder)
     }

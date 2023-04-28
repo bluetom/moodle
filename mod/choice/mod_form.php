@@ -8,7 +8,7 @@ require_once ($CFG->dirroot.'/course/moodleform_mod.php');
 class mod_choice_mod_form extends moodleform_mod {
 
     function definition() {
-        global $CFG, $CHOICE_SHOWRESULTS, $CHOICE_PUBLISH, $CHOICE_DISPLAY, $DB;
+        global $CFG, $CHOICE_SHOWRESULTS, $CHOICE_PUBLISH, $CHOICE_DISPLAY, $DB, $COURSE;
 
         $mform    =& $this->_form;
 
@@ -50,7 +50,8 @@ class mod_choice_mod_form extends moodleform_mod {
 
         $repeatarray = array();
         $repeatarray[] = $mform->createElement('text', 'option', get_string('optionno', 'choice'));
-        $repeatarray[] = $mform->createElement('text', 'limit', get_string('limitno', 'choice'));
+        $repeatarray[] = $mform->createElement('text', 'limit', get_string('limitno', 'choice'), array('size'=>'4'));
+        $repeatarray[] = $mform->createElement('text', 'fraction', get_string('fractionno', 'choice'), array('size'=>'4'));
         $repeatarray[] = $mform->createElement('hidden', 'optionid', 0);
 
         if ($this->_instance){
@@ -67,7 +68,11 @@ class mod_choice_mod_form extends moodleform_mod {
         $repeateloptions['limit']['type'] = PARAM_INT;
 
         $repeateloptions['option']['helpbutton'] = array('choiceoptions', 'choice');
-        $mform->setType('option', PARAM_CLEANHTML);
+        $repeateloptions['fraction']['default'] = 0;
+        $repeateloptions['fraction']['hideif'] = array('grademax', 'eq', '0');
+        $repeateloptions['fraction']['rule'] = 'numeric';
+        $repeateloptions['fraction']['type'] = PARAM_FLOAT;
+        $mform->setType('option', PARAM_RAW);
 
         $mform->setType('optionid', PARAM_INT);
 
@@ -105,6 +110,32 @@ class mod_choice_mod_form extends moodleform_mod {
         $mform->setDefault('includeinactive', 0);
 
 //-------------------------------------------------------------------------------
+
+        $mform->addElement('header', 'gradehdr', get_string('grade', 'grades'));
+
+        $mform->addElement('text', 'grademax',
+            get_string('grademax', 'grades').' ('.get_string('points', 'grades').')',
+            array('size'=>'4'));
+        $mform->setType('grademax', PARAM_INT);
+        $mform->setDefault('grademax', '0');
+        $mform->addRule('grademax', null, 'numeric', null, 'client');
+        $mform->addHelpButton('grademax', 'grademax', 'grades');
+
+        $mform->addElement('text', 'gradepass',
+            get_string('gradepass', 'grades').' ('.get_string('points', 'grades').')',
+            array('size'=>'4'));
+        $mform->setType('gradepass', PARAM_INT);
+        $mform->setDefault('gradepass', '0');
+        $mform->addRule('gradepass', null, 'numeric', null, 'client');
+        $mform->addHelpButton('gradepass', 'gradepass', 'grades');
+        $mform->hideIf('gradepass', 'grademax', 'eq', '0');
+
+        $mform->addElement('select', 'gradecat', get_string('gradecategoryonmodform', 'grades'),
+            grade_get_categories_menu($COURSE->id));
+        $mform->addHelpButton('gradecat', 'gradecategoryonmodform', 'grades');
+        $mform->hideIf('gradecat', 'grademax', 'eq', '0');
+
+//-------------------------------------------------------------------------------
         $this->standard_coursemodule_elements();
 //-------------------------------------------------------------------------------
         $this->add_action_buttons();
@@ -113,17 +144,20 @@ class mod_choice_mod_form extends moodleform_mod {
     function data_preprocessing(&$default_values){
         global $DB;
         if (!empty($this->_instance) && ($options = $DB->get_records_menu('choice_options',array('choiceid'=>$this->_instance), 'id', 'id,text'))
-               && ($options2 = $DB->get_records_menu('choice_options', array('choiceid'=>$this->_instance), 'id', 'id,maxanswers')) ) {
+            && ($options2 = $DB->get_records_menu('choice_options', array('choiceid'=>$this->_instance), 'id', 'id,maxanswers'))
+            && ($options3 = $DB->get_records_menu('choice_options', array('choiceid'=>$this->_instance), 'id', 'id,fraction'))) {
             $choiceids=array_keys($options);
             $options=array_values($options);
             $options2=array_values($options2);
+            $options3=array_values($options3);
 
             foreach (array_keys($options) as $key){
                 $default_values['option['.$key.']'] = $options[$key];
                 $default_values['limit['.$key.']'] = $options2[$key];
+                $default_values['fraction['.$key.']'] = $options3[$key];
                 $default_values['optionid['.$key.']'] = $choiceids[$key];
             }
-
+            $default_values['grademax'] = $default_values['grade'];
         }
 
     }
@@ -155,6 +189,19 @@ class mod_choice_mod_form extends moodleform_mod {
      **/
     public function validation($data, $files) {
         $errors = parent::validation($data, $files);
+
+        // Check if fractions percent sum is 100.
+        if (isset($data['fraction'])) {
+            $fractionsum = 0;
+            foreach ($data['fraction'] as $fraction) {
+                if (is_numeric($fraction) && $fraction > 0) {
+                    $fractionsum += $fraction;
+                }
+            }
+            if ((int)$fractionsum != (int)100) {
+                $errors['fraction[0]'] = get_string('fractionsum', 'choice');
+            }
+        }
 
         // Check open and close times are consistent.
         if ($data['timeopen'] && $data['timeclose'] &&

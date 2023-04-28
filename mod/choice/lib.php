@@ -123,6 +123,7 @@ function choice_add_instance($choice) {
     require_once($CFG->dirroot.'/mod/choice/locallib.php');
 
     $choice->timemodified = time();
+    $choice->grade = (int)$choice->grademax ?? 0;
 
     //insert answers
     $choice->id = $DB->insert_record("choice", $choice);
@@ -135,9 +136,16 @@ function choice_add_instance($choice) {
             if (isset($choice->limit[$key])) {
                 $option->maxanswers = $choice->limit[$key];
             }
+            if (isset($choice->fraction[$key])) {
+                $option->fraction = $choice->fraction[$key] ?? 0;
+            }
             $option->timemodified = time();
             $DB->insert_record("choice_options", $option);
         }
+    }
+
+    if ($choice->grade) {
+        choice_grade_item_update($choice);
     }
 
     // Add calendar events if necessary.
@@ -165,6 +173,7 @@ function choice_update_instance($choice) {
 
     $choice->id = $choice->instance;
     $choice->timemodified = time();
+    $choice->grade = (int)$choice->grademax ?? 0;
 
     //update, delete or insert answers
     foreach ($choice->option as $key => $value) {
@@ -174,6 +183,9 @@ function choice_update_instance($choice) {
         $option->choiceid = $choice->id;
         if (isset($choice->limit[$key])) {
             $option->maxanswers = $choice->limit[$key];
+        }
+        if (isset($choice->fraction[$key])) {
+            $option->fraction = $choice->fraction[$key] ?? 0;
         }
         $option->timemodified = time();
         if (isset($choice->optionid[$key]) && !empty($choice->optionid[$key])){//existing choice record
@@ -190,6 +202,15 @@ function choice_update_instance($choice) {
             if (isset($value) && $value <> '') {
                 $DB->insert_record("choice_options", $option);
             }
+        }
+    }
+
+    $choicedb = $DB->get_record('choice', ["id" => $choice->id]);
+    if ($choicedb->grade != $choice->grademax) {
+        if ($choice->grademax) {
+            choice_grade_item_update($choice);
+        } else {
+            choice_grade_item_delete($choice);
         }
     }
 
@@ -431,12 +452,18 @@ function choice_user_submit_response($formanswer, $choice, $userid, $course, $cm
     // Check the user hasn't exceeded the maximum selections for the choice(s) they have selected.
     $answersnapshots = array();
     $deletedanswersnapshots = array();
+    $gradesum = 0;
     if (!($choice->limitanswers && $choicesexceeded)) {
         if ($current) {
             // Update an existing answer.
             foreach ($current as $c) {
                 if (in_array($c->optionid, $formanswers)) {
                     $DB->set_field('choice_answers', 'timemodified', time(), array('id' => $c->id));
+                    if ($choice->grade) {
+                        if ($optiongrade = $DB->get_field('choice_options', 'fraction', array('id' => $c->optionid))) {
+                            $gradesum += $optiongrade;
+                        }
+                    }
                 } else {
                     $deletedanswersnapshots[] = $c;
                     $DB->delete_records('choice_answers', array('id' => $c->id));
@@ -453,6 +480,11 @@ function choice_user_submit_response($formanswer, $choice, $userid, $course, $cm
                     $newanswer->timemodified = time();
                     $newanswer->id = $DB->insert_record("choice_answers", $newanswer);
                     $answersnapshots[] = $newanswer;
+                    if ($choice->grade) {
+                        if ($optiongrade = $DB->get_field('choice_options', 'fraction', array('id' => $f))) {
+                            $gradesum += $optiongrade;
+                        }
+                    }
                 }
             }
         } else {
@@ -465,6 +497,11 @@ function choice_user_submit_response($formanswer, $choice, $userid, $course, $cm
                 $newanswer->timemodified = time();
                 $newanswer->id = $DB->insert_record("choice_answers", $newanswer);
                 $answersnapshots[] = $newanswer;
+                if ($choice->grade) {
+                    if ($optiongrade = $DB->get_field('choice_options', 'fraction', array('id' => $answer))) {
+                        $gradesum += $optiongrade;
+                    }
+                }
             }
 
             // Update completion state
@@ -482,6 +519,13 @@ function choice_user_submit_response($formanswer, $choice, $userid, $course, $cm
     // Release lock.
     if (isset($choicelock)) {
         $choicelock->release();
+    }
+
+    // Update gradebook.
+    if ($choice->grade) {
+        $usergrade = $choice->grade*$gradesum/100;
+        choice_set_user_grade($choice->id, $userid, $usergrade);
+        choice_update_grades($choice, $userid);
     }
 
     // Trigger events.
@@ -637,6 +681,10 @@ function choice_delete_instance($id) {
         $result = false;
     }
 
+    if (! $DB->delete_records("choice_grades", array("choiceid"=>"$choice->id"))) {
+        $result = false;
+    }
+
     if (! $DB->delete_records("choice", array("id"=>"$choice->id"))) {
         $result = false;
     }
@@ -644,6 +692,8 @@ function choice_delete_instance($id) {
     if (! $DB->delete_records('event', array('modulename' => 'choice', 'instance' => $choice->id))) {
         $result = false;
     }
+
+    choice_grade_item_delete($choice);
 
     return $result;
 }
@@ -758,6 +808,7 @@ function choice_reset_userdata($data) {
                        WHERE ch.course=?";
 
         $DB->delete_records_select('choice_answers', "choiceid IN ($choicessql)", array($data->courseid));
+        $DB->delete_records_select('choice_grades', "choiceid IN ($choicessql)", array($data->courseid));
         $status[] = array('component'=>$componentstr, 'item'=>get_string('removeresponses', 'choice'), 'error'=>false);
     }
 
@@ -845,7 +896,7 @@ function choice_supports($feature) {
         case FEATURE_MOD_INTRO:               return true;
         case FEATURE_COMPLETION_TRACKS_VIEWS: return true;
         case FEATURE_COMPLETION_HAS_RULES:    return true;
-        case FEATURE_GRADE_HAS_GRADE:         return false;
+        case FEATURE_GRADE_HAS_GRADE:         return true;
         case FEATURE_GRADE_OUTCOMES:          return false;
         case FEATURE_BACKUP_MOODLE2:          return true;
         case FEATURE_SHOW_DESCRIPTION:        return true;
@@ -1369,4 +1420,148 @@ function mod_choice_core_calendar_get_event_action_string(string $eventtype): st
     }
 
     return get_string($identifier, 'choice', $modulename);
+}
+
+/**
+ * Function which updates the grades of given module instance and optional a given user.
+ *
+ * @param stdClass $choice choice object
+ * @param int $userid id of a user, optional
+ * @return choice_grade_item_update Returns GRADE_UPDATE_OK, GRADE_UPDATE_FAILED, GRADE_UPDATE_MULTIPLE or
+ * GRADE_UPDATE_ITEM_LOCKED
+ */
+function choice_update_grades($choice, $userid = 0) {
+    global $CFG;
+    include_once($CFG->libdir . '/gradelib.php');
+
+    if ($choice->grade == 0) {
+        return choice_grade_item_update($choice);
+    } else {
+        if ($grades = choice_get_user_grade($choice, $userid)) {
+            foreach ($grades as $key => $value) {
+                if ($value->rawgrade == -1) {
+                    $grades[$key]->rawgrade = null;
+                }
+            }
+            return choice_grade_item_update($choice, $grades);
+        } else {
+            return choice_grade_item_update($choice);
+        }
+    }
+}
+
+/**
+ * Function which updates the grades of given module instance (optional with grades).
+ *
+ * @param stdClass $choice choice object
+ * @param int $grades optional
+ * @return grade_update
+ */
+function choice_grade_item_update($choice, $grades = null) {
+    global $CFG;
+    include_once($CFG->libdir . '/gradelib.php');
+
+    if (!isset($choice->courseid)) {
+        $choice->courseid = $choice->course;
+    }
+
+    if (isset($choice->cmidnumber)) {
+        $params = array('itemname' => $choice->name, 'idnumber' => $choice->cmidnumber);
+    } else {
+        $params = array('itemname' => $choice->name);
+    }
+
+    if ($choice->grade) {
+        $params['gradetype'] = GRADE_TYPE_VALUE;
+        $params['grademax'] = (int)$choice->grade;
+        if (isset($choice->gradepass) && $choice->gradepass) {
+            $params['gradepass'] = (int)$choice->gradepass;
+        }
+        if (isset($choice->gradecat) && $choice->gradecat != 14) {
+            $params['categoryid'] = $choice->gradecat;
+        }
+    } else {
+        $params['gradetype'] = GRADE_TYPE_NONE;
+    }
+
+    if ($grades === 'reset') {
+        $params['reset'] = true;
+        $grades = null;
+    }
+
+    return grade_update('mod/choice', $choice->courseid, 'mod', 'choice', $choice->id, 0, $grades, $params);
+}
+
+/**
+ * Delete grade item for given choice instance
+ *
+ * @param stdClass $choice instance object
+ * @return grade_update
+ */
+function choice_grade_item_delete($choice) {
+    global $CFG;
+    require_once($CFG->libdir.'/gradelib.php');
+
+    return grade_update('mod/choice', $choice->course, 'mod', 'choice',
+        $choice->id, 0, null, array('deleted' => 1));
+}
+
+/**
+ * Function to retrieve grade of a given user and instance
+ *
+ * @param stdClass $choice instance object
+ * @param int $userid id of user, optional
+ * @return array of user's grade or empty array
+ */
+function choice_get_user_grade($choice, $userid = 0) {
+    global $DB;
+
+    $params = array('choiceid' => $choice->id, 'userid' => $userid);
+    if ($userid) {
+        $query = 'SELECT
+                    g.id AS id,
+                    g.userid AS userid,
+                    g.grade AS rawgrade,
+                    g.timemodified AS dategraded,
+                    g.timemodified AS datesubmitted,
+                    null AS feedback
+                FROM {choice_grades} g
+                WHERE g.choiceid = :choiceid AND g.userid = :userid
+                ORDER BY id DESC';
+        $arr = $DB->get_records_sql($query, $params);
+        $result = reset($arr);
+        if ($result) {
+            return array($userid => $result);
+        } else {
+            return array();
+        }
+    } else {
+        return array();
+    }
+}
+
+/**
+ * Function to write a grade for a given user for an instance
+ *
+ * @param int $choiceid id of instance
+ * @param int $userid id of user
+ * @param number $value grade value
+ * @return bool|int return value of insert or update DB
+ */
+function choice_set_user_grade($choiceid, $userid, $value) {
+    global $DB;
+
+    $record = new stdClass();
+    $record->timestamp = time();
+    $record->grade = $value;
+    if ($id = $DB->get_field('choice_grades', 'id', array('choiceid' => $choiceid, 'userid' => $userid))) {
+        $record->id = $id;
+        $result = $DB->update_record('choice_grades', $record);
+    } else {
+        $record->choiceid = $choiceid;
+        $record->userid = $userid;
+        $result = $DB->insert_record('choice_grades', $record);
+    }
+
+    return $result;
 }
