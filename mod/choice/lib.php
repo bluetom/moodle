@@ -123,7 +123,9 @@ function choice_add_instance($choice) {
     require_once($CFG->dirroot.'/mod/choice/locallib.php');
 
     $choice->timemodified = time();
-    $choice->grade = (int)$choice->grademax ?? 0;
+    if (isset($choice->grademax)) {
+        $choice->grade = (int)$choice->grademax ?? 0;
+    }
 
     //insert answers
     $choice->id = $DB->insert_record("choice", $choice);
@@ -144,7 +146,7 @@ function choice_add_instance($choice) {
         }
     }
 
-    if ($choice->grade) {
+    if (isset($choice->grade)) {
         choice_grade_item_update($choice);
     }
 
@@ -173,7 +175,9 @@ function choice_update_instance($choice) {
 
     $choice->id = $choice->instance;
     $choice->timemodified = time();
-    $choice->grade = (int)$choice->grademax ?? 0;
+    if (isset($choice->grademax)) {
+        $choice->grade = (int)$choice->grademax ?? 0;
+    }
 
     //update, delete or insert answers
     foreach ($choice->option as $key => $value) {
@@ -205,12 +209,14 @@ function choice_update_instance($choice) {
         }
     }
 
-    $choicedb = $DB->get_record('choice', ["id" => $choice->id]);
-    if ($choicedb->grade != $choice->grademax) {
-        if ($choice->grademax) {
-            choice_grade_item_update($choice);
-        } else {
-            choice_grade_item_delete($choice);
+    if (isset($choice->grade)) {
+        $gradedb = $DB->get_field('choice', 'grade', ["id" => $choice->id]);
+        if ($gradedb != $choice->grademax) {
+            if ($choice->grademax) {
+                choice_grade_item_update($choice);
+            } else {
+                choice_grade_item_delete($choice);
+            }
         }
     }
 
@@ -1471,7 +1477,7 @@ function choice_grade_item_update($choice, $grades = null) {
         $params = array('itemname' => $choice->name);
     }
 
-    if ($choice->grade) {
+    if (isset($choice->grade) && $choice->grade) {
         $params['gradetype'] = GRADE_TYPE_VALUE;
         $params['grademax'] = (int)$choice->grade;
         if (isset($choice->gradepass) && $choice->gradepass) {
