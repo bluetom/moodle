@@ -64,22 +64,6 @@ function xmldb_choice_upgrade($oldversion) {
             $dbman->add_field($table, $field);
         }
 
-        // Define table choice_grades to be created.
-        $table = new xmldb_table('choice_grades');
-
-        // Conditionally launch create table for choice_grades.
-        if (!$dbman->table_exists($table)) {
-            // Adding fields to table choice_grades.
-            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
-            $table->add_field('choiceid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-            $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-            $table->add_field('grade', XMLDB_TYPE_NUMBER, '10, 5', null, XMLDB_NOTNULL, null, '0');
-            $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
-
-            $table->add_key('primary', XMLDB_KEY_PRIMARY, array('id'));
-            $dbman->create_table($table);
-        }
-
         // Choice savepoint reached.
         upgrade_mod_savepoint(true, 2022112801, 'choice');
     }

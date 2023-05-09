@@ -68,7 +68,6 @@ class mod_choice_mod_form extends moodleform_mod {
         $repeateloptions['limit']['type'] = PARAM_INT;
 
         $repeateloptions['option']['helpbutton'] = array('choiceoptions', 'choice');
-        $repeateloptions['fraction']['default'] = 0;
         $repeateloptions['fraction']['hideif'] = array('grademax', 'eq', '0');
         $repeateloptions['fraction']['rule'] = 'numeric';
         $repeateloptions['fraction']['type'] = PARAM_FLOAT;
@@ -178,6 +177,9 @@ class mod_choice_mod_form extends moodleform_mod {
                 $data->completionsubmit = 0;
             }
         }
+        if (isset($data->grademax) && !$data->grademax) {
+            $data->grademax = null;
+        }
     }
 
     /**
@@ -190,16 +192,18 @@ class mod_choice_mod_form extends moodleform_mod {
     public function validation($data, $files) {
         $errors = parent::validation($data, $files);
 
-        // Check if fractions percent sum is 100.
-        if (isset($data['fraction'])) {
-            $fractionsum = 0;
-            foreach ($data['fraction'] as $fraction) {
-                if (is_numeric($fraction) && $fraction > 0) {
-                    $fractionsum += $fraction;
+        if (isset($data['grademax']) && $data['grademax']) {
+            // Check if fractions percent sum is 100.
+            if (isset($data['fraction'])) {
+                $fractionsum = 0;
+                foreach ($data['fraction'] as $fraction) {
+                    if (is_numeric($fraction) && $fraction > 0) {
+                        $fractionsum += $fraction;
+                    }
                 }
-            }
-            if ((int)$fractionsum != (int)100) {
-                $errors['fraction[0]'] = get_string('fractionsum', 'choice');
+                if ((int)$fractionsum != 100) {
+                    $errors['fraction[0]'] = get_string('fractionsum', 'choice');
+                }
             }
         }
 

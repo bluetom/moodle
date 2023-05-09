@@ -53,20 +53,12 @@ class backup_choice_activity_structure_step extends backup_activity_structure_st
         $answer = new backup_nested_element('answer', array('id'), array(
             'userid', 'optionid', 'timemodified'));
 
-        $grades = new backup_nested_element('grades');
-
-        $grade = new backup_nested_element('grade', array('id'), array(
-            'userid', 'grade', 'timemodified'));
-
         // Build the tree
         $choice->add_child($options);
         $options->add_child($option);
 
         $choice->add_child($answers);
         $answers->add_child($answer);
-
-        $choice->add_child($grades);
-        $grades->add_child($grade);
 
         // Define sources
         $choice->set_source_table('choice', array('id' => backup::VAR_ACTIVITYID));
@@ -76,7 +68,6 @@ class backup_choice_activity_structure_step extends backup_activity_structure_st
         // All the rest of elements only happen if we are including user info
         if ($userinfo) {
             $answer->set_source_table('choice_answers', array('choiceid' => '../../id'));
-            $grade->set_source_table('choice_grades', array('choiceid' => '../../id'));
         }
 
         // Define id annotations

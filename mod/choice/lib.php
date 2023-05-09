@@ -530,8 +530,13 @@ function choice_user_submit_response($formanswer, $choice, $userid, $course, $cm
     // Update gradebook.
     if ($choice->grade) {
         $usergrade = $choice->grade*$gradesum/100;
-        choice_set_user_grade($choice->id, $userid, $usergrade);
-        choice_update_grades($choice, $userid);
+        $grade = new stdClass();
+        $grade->userid = $userid;
+        $grade->rawgrade = $usergrade;
+        $grade->dategraded = time();
+        $grade->datesubmitted = time();
+        $grades = array($userid => $grade);
+        choice_grade_item_update($choice, $grades);
     }
 
     // Trigger events.
@@ -687,10 +692,6 @@ function choice_delete_instance($id) {
         $result = false;
     }
 
-    if (! $DB->delete_records("choice_grades", array("choiceid"=>"$choice->id"))) {
-        $result = false;
-    }
-
     if (! $DB->delete_records("choice", array("id"=>"$choice->id"))) {
         $result = false;
     }
@@ -814,7 +815,6 @@ function choice_reset_userdata($data) {
                        WHERE ch.course=?";
 
         $DB->delete_records_select('choice_answers', "choiceid IN ($choicessql)", array($data->courseid));
-        $DB->delete_records_select('choice_grades', "choiceid IN ($choicessql)", array($data->courseid));
         $status[] = array('component'=>$componentstr, 'item'=>get_string('removeresponses', 'choice'), 'error'=>false);
     }
 
@@ -1429,34 +1429,6 @@ function mod_choice_core_calendar_get_event_action_string(string $eventtype): st
 }
 
 /**
- * Function which updates the grades of given module instance and optional a given user.
- *
- * @param stdClass $choice choice object
- * @param int $userid id of a user, optional
- * @return choice_grade_item_update Returns GRADE_UPDATE_OK, GRADE_UPDATE_FAILED, GRADE_UPDATE_MULTIPLE or
- * GRADE_UPDATE_ITEM_LOCKED
- */
-function choice_update_grades($choice, $userid = 0) {
-    global $CFG;
-    include_once($CFG->libdir . '/gradelib.php');
-
-    if ($choice->grade == 0) {
-        return choice_grade_item_update($choice);
-    } else {
-        if ($grades = choice_get_user_grade($choice, $userid)) {
-            foreach ($grades as $key => $value) {
-                if ($value->rawgrade == -1) {
-                    $grades[$key]->rawgrade = null;
-                }
-            }
-            return choice_grade_item_update($choice, $grades);
-        } else {
-            return choice_grade_item_update($choice);
-        }
-    }
-}
-
-/**
  * Function which updates the grades of given module instance (optional with grades).
  *
  * @param stdClass $choice choice object
@@ -1510,64 +1482,4 @@ function choice_grade_item_delete($choice) {
 
     return grade_update('mod/choice', $choice->course, 'mod', 'choice',
         $choice->id, 0, null, array('deleted' => 1));
-}
-
-/**
- * Function to retrieve grade of a given user and instance
- *
- * @param stdClass $choice instance object
- * @param int $userid id of user, optional
- * @return array of user's grade or empty array
- */
-function choice_get_user_grade($choice, $userid = 0) {
-    global $DB;
-
-    $params = array('choiceid' => $choice->id, 'userid' => $userid);
-    if ($userid) {
-        $query = 'SELECT
-                    g.id AS id,
-                    g.userid AS userid,
-                    g.grade AS rawgrade,
-                    g.timemodified AS dategraded,
-                    g.timemodified AS datesubmitted,
-                    null AS feedback
-                FROM {choice_grades} g
-                WHERE g.choiceid = :choiceid AND g.userid = :userid
-                ORDER BY id DESC';
-        $arr = $DB->get_records_sql($query, $params);
-        $result = reset($arr);
-        if ($result) {
-            return array($userid => $result);
-        } else {
-            return array();
-        }
-    } else {
-        return array();
-    }
-}
-
-/**
- * Function to write a grade for a given user for an instance
- *
- * @param int $choiceid id of instance
- * @param int $userid id of user
- * @param number $value grade value
- * @return bool|int return value of insert or update DB
- */
-function choice_set_user_grade($choiceid, $userid, $value) {
-    global $DB;
-
-    $record = new stdClass();
-    $record->timestamp = time();
-    $record->grade = $value;
-    if ($id = $DB->get_field('choice_grades', 'id', array('choiceid' => $choiceid, 'userid' => $userid))) {
-        $record->id = $id;
-        $result = $DB->update_record('choice_grades', $record);
-    } else {
-        $record->choiceid = $choiceid;
-        $record->userid = $userid;
-        $result = $DB->insert_record('choice_grades', $record);
-    }
-
-    return $result;
 }
