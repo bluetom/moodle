@@ -156,7 +156,9 @@ class mod_choice_mod_form extends moodleform_mod {
                 $default_values['fraction['.$key.']'] = $options3[$key];
                 $default_values['optionid['.$key.']'] = $choiceids[$key];
             }
-            $default_values['grademax'] = $default_values['grade'];
+            if (isset($default_values['grade'])) {
+                $default_values['grademax'] = $default_values['grade'];
+            }
         }
 
     }
