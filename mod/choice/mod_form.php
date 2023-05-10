@@ -117,7 +117,7 @@ class mod_choice_mod_form extends moodleform_mod {
             array('size'=>'4'));
         $mform->setType('grademax', PARAM_INT);
         $mform->setDefault('grademax', '0');
-        $mform->addRule('grademax', null, 'numeric', null, 'client');
+        $mform->addRule('grademax', null, 'positiveint', null, 'client');
         $mform->addHelpButton('grademax', 'grademax', 'grades');
 
         $mform->addElement('text', 'gradepass',
@@ -125,7 +125,7 @@ class mod_choice_mod_form extends moodleform_mod {
             array('size'=>'4'));
         $mform->setType('gradepass', PARAM_INT);
         $mform->setDefault('gradepass', '0');
-        $mform->addRule('gradepass', null, 'numeric', null, 'client');
+        $mform->addRule('gradepass', null, 'positiveint', null, 'client');
         $mform->addHelpButton('gradepass', 'gradepass', 'grades');
         $mform->hideIf('gradepass', 'grademax', 'eq', '0');
 
