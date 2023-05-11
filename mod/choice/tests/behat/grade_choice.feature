@@ -1,5 +1,5 @@
 @mod @mod_choice
-Feature: Add choice activity with grading
+Feature: Add choice activity with grading and test student response and removing the grading feature
   In order to ask questions as a choice of multiple responses and grade the student's answers
   As a teacher
   I need to add a choice activity with a valid grademax value and valid fraction values per option to course
@@ -41,3 +41,14 @@ Feature: Add choice activity with grading
     Then the following should exist in the "user-grade" table:
       | Grade item          | Grade | Range | Percentage  |
       | Choice name         | 5.00  | 0–100 | 5.00 %      |
+
+  @javascript
+  Scenario: If value 0 is entered for grade max in choice instance settings the grading item will be removed
+    When I am on the "Choice name" "choice activity editing" page logged in as teacher1
+    And I expand all fieldsets
+    And I set the following fields to these values:
+      | Maximum grade (points)          | 0 |
+    And I press "Save and return to course"
+    And I navigate to "View > Grader report" in the course gradebook
+    Then I should not see "Choice name" in the "//table[contains(@class, 'gradereport-grader-table')]" "xpath_element"
+

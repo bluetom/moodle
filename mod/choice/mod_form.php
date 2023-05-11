@@ -117,7 +117,7 @@ class mod_choice_mod_form extends moodleform_mod {
             array('size'=>'4'));
         $mform->setType('grademax', PARAM_INT);
         $mform->setDefault('grademax', '0');
-        $mform->addRule('grademax', null, 'positiveint', null, 'client');
+        $mform->addRule('grademax', null, 'numeric', null, 'client');
         $mform->addHelpButton('grademax', 'grademax', 'grades');
 
         $mform->addElement('text', 'gradepass',
@@ -125,7 +125,7 @@ class mod_choice_mod_form extends moodleform_mod {
             array('size'=>'4'));
         $mform->setType('gradepass', PARAM_INT);
         $mform->setDefault('gradepass', '0');
-        $mform->addRule('gradepass', null, 'positiveint', null, 'client');
+        $mform->addRule('gradepass', null, 'numeric', null, 'client');
         $mform->addHelpButton('gradepass', 'gradepass', 'grades');
         $mform->hideIf('gradepass', 'grademax', 'eq', '0');
 
@@ -157,7 +157,10 @@ class mod_choice_mod_form extends moodleform_mod {
                 $default_values['optionid['.$key.']'] = $choiceids[$key];
             }
             if (isset($default_values['grade'])) {
-                $default_values['grademax'] = $default_values['grade'];
+                $default_values['grademax'] = (int)$default_values['grade'];
+            }
+            if (isset($default_values['gradepass'])) {
+                $default_values['gradepass'] = (int)$default_values['gradepass'];
             }
         }
 
@@ -196,16 +199,20 @@ class mod_choice_mod_form extends moodleform_mod {
 
         if (isset($data['grademax']) && $data['grademax']) {
             // Check if fractions percent sum is 100.
-            if (isset($data['fraction'])) {
-                $fractionsum = 0;
-                foreach ($data['fraction'] as $fraction) {
-                    if (is_numeric($fraction) && $fraction > 0) {
-                        $fractionsum += $fraction;
+            $fractionsum = 0;
+            foreach ($data['option'] as $key => $value) {
+                $value = trim($value);
+                if (isset($value) && $value <> '') {
+                    if (isset($data['fraction'][$key])) {
+                        $fraction = $data['fraction'][$key];
+                        if (is_numeric($fraction) && $fraction > 0) {
+                            $fractionsum += $fraction;
+                        }
                     }
                 }
-                if ((int)$fractionsum != 100) {
-                    $errors['fraction[0]'] = get_string('fractionsum', 'choice');
-                }
+            }
+            if ((int)$fractionsum != 100) {
+                $errors['fraction[0]'] = get_string('fractionsum', 'choice');
             }
         }
 

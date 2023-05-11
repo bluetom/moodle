@@ -124,7 +124,7 @@ function choice_add_instance($choice) {
 
     $choice->timemodified = time();
     if (isset($choice->grademax)) {
-        $choice->grade = (int)$choice->grademax ?? 0;
+        $choice->grade = abs($choice->grademax ?? 0);
     }
 
     //insert answers
@@ -175,8 +175,10 @@ function choice_update_instance($choice) {
 
     $choice->id = $choice->instance;
     $choice->timemodified = time();
-    if (isset($choice->grademax)) {
-        $choice->grade = (int)$choice->grademax ?? 0;
+    if (isset($choice->grademax)) { // If it comes from mod_form.
+        $choice->grade = abs($choice->grademax ?? 0);
+    } else {
+        $choice->grade = $choice->grade ?? 0;
     }
 
     //update, delete or insert answers
@@ -188,13 +190,13 @@ function choice_update_instance($choice) {
         if (isset($choice->limit[$key])) {
             $option->maxanswers = $choice->limit[$key];
         }
-        if (isset($choice->fraction[$key])) {
-            $option->fraction = $choice->fraction[$key] ?? 0;
-        }
         $option->timemodified = time();
         if (isset($choice->optionid[$key]) && !empty($choice->optionid[$key])){//existing choice record
             $option->id=$choice->optionid[$key];
             if (isset($value) && $value <> '') {
+                if ($choice->grade) {
+                    $option->fraction = $choice->fraction[$key] ?? 0;
+                }
                 $DB->update_record("choice_options", $option);
             } else {
                 // Remove the empty (unused) option.
@@ -209,15 +211,10 @@ function choice_update_instance($choice) {
         }
     }
 
-    if (isset($choice->grade)) {
-        $gradedb = $DB->get_field('choice', 'grade', ["id" => $choice->id]);
-        if ($gradedb != $choice->grademax) {
-            if ($choice->grademax) {
-                choice_grade_item_update($choice);
-            } else {
-                choice_grade_item_delete($choice);
-            }
-        }
+    if (!$choice->grade) {
+        choice_grade_item_delete($choice);
+    } else {
+        choice_grade_item_update($choice);
     }
 
     // Add calendar events if necessary.
@@ -1426,6 +1423,44 @@ function mod_choice_core_calendar_get_event_action_string(string $eventtype): st
     }
 
     return get_string($identifier, 'choice', $modulename);
+}
+
+/**
+ * Standard function update_grades if grading is supported by a module.
+ *
+ * @param stdClass $choice choice object
+ * @param int $userid
+ * @return grade_update
+ */
+function choice_update_grades($choice, $userid = 0) {
+    global $CFG;
+    include_once($CFG->libdir . '/gradelib.php');
+
+    if ($choice->grade == 0) {
+        return choice_grade_item_update($choice);
+    } else {
+        if ($grades = choice_get_user_grade($choice, $userid)) {
+            foreach ($grades as $key => $value) {
+                if ($value->rawgrade == -1) {
+                    $grades[$key]->rawgrade = null;
+                }
+            }
+            return choice_grade_item_update($choice, $grades);
+        } else {
+            return choice_grade_item_update($choice);
+        }
+    }
+}
+
+/**
+ * Standard function get_user_grade if grading is supported by a module.
+ *
+ * @param stdClass $choice choice object
+ * @param int $userid
+ * @return grade_update
+ */
+function choice_get_user_grade($choice, $userid = 0) {
+    return array();
 }
 
 /**
