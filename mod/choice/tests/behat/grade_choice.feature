@@ -51,4 +51,3 @@ Feature: Add choice activity with grading and test student response and removing
     And I press "Save and return to course"
     And I navigate to "View > Grader report" in the course gradebook
     Then I should not see "Choice name" in the "//table[contains(@class, 'gradereport-grader-table')]" "xpath_element"
-
